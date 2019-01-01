@@ -187,9 +187,9 @@ class Solver(object):
             dw = grads[p]
             config = self.optim_configs[p]
             next_w, next_config = self.update_rule(w, dw, config)
-            w = next_w
+            next_w = w
             #print('{} {} {} {}'.format(p,id(w),id(next_w),id(next_w)==id(w)))
-            #self.model.params[p] = next_w
+            self.model.params[p] = next_w
             self.optim_configs[p] = next_config
 
 

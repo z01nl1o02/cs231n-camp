@@ -31,7 +31,11 @@ For efficiency, update rules may perform in-place updates, mutating w and
 setting next_w equal to w.
 """
 
-why_must_inplace_for_w = True  ###????
+why_must_inplace_for_w = True
+###
+# assignment/assignment2/cs231n/solver.py  line 190
+# id(w) should not changed but in some case it will changed
+###
 
 def sgd(w, dw, config=None):
     """
