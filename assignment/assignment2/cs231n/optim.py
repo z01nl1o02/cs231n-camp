@@ -25,10 +25,13 @@ NOTE: For most update rules, the default learning rate will probably not
 perform well; however the default values of the other hyperparameters should
 work well for a variety of different problems.
 
+
+!!!!!!!!!!!!!!!!!!!!!!!!
 For efficiency, update rules may perform in-place updates, mutating w and
 setting next_w equal to w.
 """
 
+why_must_inplace_for_w = True  ###????
 
 def sgd(w, dw, config=None):
     """
@@ -65,7 +68,18 @@ def sgd_momentum(w, dw, config=None):
     # TODO: Implement the momentum update formula. Store the updated value in #
     # the next_w variable. You should also use and update the velocity v.     #
     ###########################################################################
-    pass
+    mu = config['momentum']
+    lr = config['learning_rate']
+    v = mu * v + lr*(-dw)
+    
+    
+    if why_must_inplace_for_w:
+        w += v
+        next_w = w
+    else:
+        next_w = w + v
+        
+    
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -99,13 +113,27 @@ def rmsprop(w, dw, config=None):
     # in the next_w variable. Don't forget to update cache value stored in    #
     # config['cache'].                                                        #
     ###########################################################################
-    pass
+    decay_rate = config['decay_rate']
+    lr = config['learning_rate']
+    eps = config['epsilon']
+    cache = config['cache']
+    cache = decay_rate * cache  + (1 - decay_rate) * (dw**2)
+    
+    if why_must_inplace_for_w:
+        w -= lr * dw / (np.sqrt(cache) + eps)
+        next_w = w
+    else:
+        next_w = w - lr * dw / (np.sqrt(cache) + eps)
+        
+    
+    config['cache'] = cache
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
 
     return next_w, config
 
+import pdb
 
 def adam(w, dw, config=None):
     """
@@ -130,7 +158,7 @@ def adam(w, dw, config=None):
     config.setdefault('v', np.zeros_like(w))
     config.setdefault('t', 0)
 
-    next_w = None
+    #next_w = None
     ###########################################################################
     # TODO: Implement the Adam update formula, storing the next value of w in #
     # the next_w variable. Don't forget to update the m, v, and t variables   #
@@ -139,7 +167,23 @@ def adam(w, dw, config=None):
     # NOTE: In order to match the reference output, please modify t _before_  #
     # using it in any calculations.                                           #
     ###########################################################################
-    pass
+    m,v,t = config['m'],config['v'],config['t']
+    t += 1
+    beta1,beta2,eps = config['beta1'],config['beta2'],config['epsilon']
+    lr = config['learning_rate']
+    m = beta1 * m + (1 - beta1) * dw
+    mt = m / (1 - beta1**t)
+    v = beta2 * v + (1 - beta2) * (dw**2)
+    vt = v / (1 - beta2**t)
+    
+    
+    if why_must_inplace_for_w:
+        w -= lr * mt / (np.sqrt(vt) + eps)
+        next_w = w
+    else:
+        next_w = w - lr * mt / (np.sqrt(vt) + eps)
+    #pdb.set_trace()
+    config['m'], config['v'], config['t'] = m,v,t
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
