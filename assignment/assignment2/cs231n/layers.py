@@ -483,6 +483,45 @@ def dropout_backward(dout, cache):
     return dx
 
 
+def do_conv(map2d, filter2d,stride):
+    C,H,W = map2d.shape
+    _,HH,WW = filter2d.shape
+    H_new = 1 + (H - HH)/stride
+    W_new = 1 + (W - WW)/stride
+    out = np.zeros( (H_new,W_new) ).astype(map2d.dtype.type)
+    for y in range(0,H-HH+1,stride):
+        for x in range(0,W-WW+1,stride):
+            val = (map2d[:,y:y+HH,x:x+WW] * filter2d).sum()
+            out[y//stride,x//stride] = val
+    return out
+
+def do_conv_dw(map2d, filter2d,stride, dout2d):
+    C,H,W = map2d.shape
+    _,HH,WW = filter2d.shape
+    #H_new = 1 + (H - HH)/stride
+    #W_new = 1 + (W - WW)/stride
+    out = np.zeros( (C,HH,WW) ).astype(filter2d.dtype.type)
+    for y in range(0,H-HH+1,stride):
+        for x in range(0,W-WW+1,stride):
+            val = dout2d[y//stride,x//stride] * map2d[:,y:y+HH,x:x+HH]
+            out += val
+    return out
+
+
+def do_conv_dx(map2d, filter2d,stride,dout2d):
+    C,H,W = map2d.shape
+    _,HH,WW = filter2d.shape
+    H_new = 1 + (H - HH)/stride
+    W_new = 1 + (W - WW)/stride
+    out = np.zeros( (C,H,W) ).astype(map2d.dtype.type)
+    for y in range(0,H-HH+1,stride):
+        for x in range(0,W-WW+1,stride):
+            val = dout2d[y//stride,x//stride] * filter2d
+            out[:,y:y+HH,x:x+WW] += val
+    return out
+
+            
+
 def conv_forward_naive(x, w, b, conv_param):
     """
     A naive implementation of the forward pass for a convolutional layer.
@@ -516,7 +555,18 @@ def conv_forward_naive(x, w, b, conv_param):
     # TODO: Implement the convolutional forward pass.                         #
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
-    pass
+    stride,pad = conv_param['stride'],conv_param['pad']
+    N,C,H,W = x.shape
+    F,C,HH,WW = w.shape
+    H_new = 1 + (H + 2*pad - HH)/stride
+    W_new = 1 + (W + 2*pad - WW)/stride
+    x_padding = np.pad(x,((0,0),(0,0),(pad,pad),(pad,pad)),'constant',constant_values=0)
+    out = np.zeros( (N,F,H_new,W_new) ).astype(x.dtype.type)
+    for n in range(N):
+        for f in range(F):
+            map2d = x_padding[n]
+            filter2d = w[f]
+            out[n,f] = do_conv(map2d,filter2d,stride)  + b[f]       
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -538,10 +588,28 @@ def conv_backward_naive(dout, cache):
     - db: Gradient with respect to b
     """
     dx, dw, db = None, None, None
+    x,w,b,conv_param = cache
+    dx = np.zeros(x.shape).astype(x.dtype.type)
+    dw = np.zeros(w.shape).astype(w.dtype.type)
+    db = np.zeros(b.shape).astype(b.dtype.type)
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    pass
+    stride,pad = conv_param['stride'],conv_param['pad']
+    N,C,H,W = x.shape
+    F,C,HH,WW = w.shape
+    H_new = 1 + (H + 2*pad - HH)/stride
+    W_new = 1 + (W + 2*pad - WW)/stride
+    x_padding = np.pad(x,((0,0),(0,0),(pad,pad),(pad,pad)),'constant',constant_values=0)
+    out = np.zeros( (N,F,H_new,W_new) ).astype(x.dtype.type)
+    for n in range(N):
+        for f in range(F):
+            map2d = x_padding[n]
+            filter2d = w[f]
+            dout2d = dout[n,f]
+            dw[f] += do_conv_dw(map2d,filter2d,stride,dout2d)
+            dx[n] += do_conv_dx(map2d,filter2d,stride,dout2d)[:,pad:-pad,pad:-pad]
+            db[f] += dout[n,f].sum()
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -571,7 +639,15 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # TODO: Implement the max-pooling forward pass                            #
     ###########################################################################
-    pass
+    N,C,H,W = x.shape
+    pool_height, pool_width, stride = pool_param['pool_height'], pool_param['pool_width'], pool_param['stride']
+    H_new,W_new = 1+(H-pool_height)/stride, 1+(W-pool_width)/stride
+    out = np.zeros( (N,C,H_new,W_new) ).astype( x.dtype.type )
+    for n in range(N):
+        for c in range(C):
+            for h in range(0,H,stride):
+                for w in range(0,W,stride):
+                    out[n,c,h//stride,w//stride] = x[n,c,h:h+pool_height,w:w+pool_width].max()
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -594,13 +670,26 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the max-pooling backward pass                           #
     ###########################################################################
-    pass
+    x,pool_param = cache
+    N,C,H,W = x.shape
+    pool_height, pool_width, stride = pool_param['pool_height'], pool_param['pool_width'], pool_param['stride']
+    H_new,W_new = 1+(H-pool_height)/stride, 1+(W-pool_width)/stride
+    dx = np.zeros( x.shape ).astype( x.dtype.type )
+    for n in range(N):
+        for c in range(C):
+            for h in range(0,H,stride):
+                for w in range(0,W,stride):
+                    ind = np.argmax( x[n,c,h:h+pool_height,w:w+pool_width] )
+                    pos = np.unravel_index(ind,dims=x[n,c,h:h+pool_height,w:w+pool_width].shape)
+                    pos_y,pos_x = pos
+                    dx[n,c,h+pos_y,w+pos_x] += dout[n,c,h//stride,w//stride]
+    
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
     return dx
 
-
+import copy
 def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     """
     Computes the forward pass for spatial batch normalization.
@@ -632,7 +721,16 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     # vanilla version of batch normalization you implemented above.           #
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
-    pass
+    cache = {}
+    N,C,H,W = x.shape
+    out = np.zeros( (N,C,H,W) ).astype(x.dtype.type)
+    for c in range(C):
+        map_one = np.reshape( x[:,c,:,:], (N,-1) )
+        tmp, cache[c] = batchnorm_forward(map_one,gamma[c],beta[c],(bn_param))
+        #print tmp.shape, map_one.shape
+        out[:,c,:,:] = np.reshape( tmp, (N,H,W))
+        
+        
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -662,7 +760,18 @@ def spatial_batchnorm_backward(dout, cache):
     # vanilla version of batch normalization you implemented above.           #
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
-    pass
+    N,C,H,W = dout.shape
+    dx = np.zeros( dout.shape).astype(dout.dtype.type)
+    dgamma, dbeta = [], []
+    for c in range(C):
+        map_one = np.reshape(dout[:,c,:,:],(N,-1))
+        tmp,dga,dbe = batchnorm_backward(map_one,cache[c])
+        dx[:,c,:,:] = np.reshape(tmp, dx[:,c,:,:].shape)
+        dgamma.append(dga)
+        dbeta.append(dbe)
+    
+    dgamma = np.asarray(dgamma)
+    dbeta = np.asarray(dbeta)
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
