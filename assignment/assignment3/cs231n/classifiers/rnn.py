@@ -143,12 +143,18 @@ class CaptioningRNN(object):
         out_proj, cache_proj = affine_forward(features,W_proj,b_proj) #init state
         out_embed, cache_embed = word_embedding_forward(captions_in,W_embed) #x for rnn
         h0 = out_proj
-        h_rnn, cache_rnn = rnn_forward(out_embed, h0, Wx, Wh, b)
+        if self.cell_type == "rnn":
+            h_rnn, cache_rnn = rnn_forward(out_embed, h0, Wx, Wh, b)
+        elif self.cell_type == "lstm":
+            h_rnn, cache_rnn = lstm_forward(out_embed, h0, Wx, Wh,b)
         out_vocab, cache_vocab = temporal_affine_forward(h_rnn,W_vocab,b_vocab)
         loss,dx = temporal_softmax_loss(out_vocab,captions_out,mask)
         
         dx_vocab, dW_vocab, db_vocab = temporal_affine_backward(dx,cache_vocab)
-        dx_rnn, dh0_rnn, dWx_rnn, dWh_rnn, db_rnn = rnn_backward(dx_vocab, cache_rnn)
+        if self.cell_type == "rnn":
+            dx_rnn, dh0_rnn, dWx_rnn, dWh_rnn, db_rnn = rnn_backward(dx_vocab, cache_rnn)
+        elif self.cell_type == "lstm":
+            dx_rnn, dh0_rnn, dWx_rnn, dWh_rnn, db_rnn = lstm_backward(dx_vocab, cache_rnn)
         dW_embed = word_embedding_backward(dx_rnn,cache_embed)
         dx_proj,dW_proj,db_proj = affine_backward(dh0_rnn,cache_proj)
         
@@ -227,13 +233,22 @@ class CaptioningRNN(object):
         word_prev = self._start
         out_proj, _ = affine_forward(features,W_proj,b_proj)
         prev_h = out_proj
+        if self.cell_type == "lstm":
+            prev_c = np.zeros(prev_h.shape).astype(prev_h.dtype.type)
         for t in range(max_length):
             embed_prev,_ = word_embedding_forward(word_prev,W_embed)
-            next_h, _ = rnn_step_forward(embed_prev,prev_h,Wx,Wh,b)
+            
+            if self.cell_type == "rnn":
+                next_h, _ = rnn_step_forward(embed_prev,prev_h,Wx,Wh,b)
+            elif self.cell_type == "lstm":
+                next_h,next_c,_ = lstm_step_forward(embed_prev,prev_h,prev_c,Wx,Wh,b)
+                
             out_vocab,_ = affine_forward(next_h, W_vocab, b_vocab)
             
             embed_prev = out_vocab
             prev_h = next_h
+            if self.cell_type == "lstm":
+                prev_c = next_c
             
             captions[:,t] = np.argmax( out_vocab, axis=1)
         ############################################################################
